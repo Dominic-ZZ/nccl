@@ -103,6 +103,9 @@ struct ncclComm {
   // Whether we have remote access to the recvbuff pointers passed from remote
   // GPUs. In single process mode this can be used as long as QPI links are
   // not present. In multi-process, we never push to a remote recvbuff.
+  // useRemoteRecv是一个布尔值，表示是否可以访问从远程GPU传递的recvbuff指针。在单进程
+  // 模式下，只要没有QPI链接，就可以使用它。在多进程中，我们永远不会将数据推送到远程的
+  // recvbuff。
   int useRemoteRecv;
 
   // Device-to-device communication structures to access remote or local device

@@ -40,7 +40,7 @@
 #define ROUNDUP(x, y)                                                           \
     (((((x) + (y) - 1) / (y))) * (y))
 #define BAR_EXEC(type, barid, nthreads) \
-    asm("bar." #type " " #barid ", " #nthreads ";\n\t")
+    asm("bar." #type " " #barid ", " #nthreads ";\n\t")//asm：在C++内部嵌入汇编指令
 #define BAR_EXPAND(type, barid, nthreads) \
     BAR_EXEC(type, barid, (nthreads))
 
@@ -53,7 +53,7 @@
 __device__ unsigned int spinct;
 
 // Spin wait until func evaluates to true
-template<typename FUNC>
+template<typename FUNC>//循环等待，直到func的计算结果为true
 __device__ inline void Wait(const FUNC& func) {
   while (!func()) {
     // waste time
@@ -157,7 +157,7 @@ struct MULTI<FUNC, float> {
     cx.storage = x;
     cy.storage = y;
 
-    cr.a = FUNC()(cx.a, cy.a);
+    cr.a = FUNC()(cx.a, cy.a);//这个FUNC()是在干啥：对于reduce，定义在reduce_kernel中，就是执行sum、max等
     cr.b = FUNC()(cx.b, cy.b);
 
     return cr.storage;
@@ -274,10 +274,12 @@ __device__ inline void ReduceOrCopy(const int tid,
   const int UNROLL2 = (UNROLL >= 2) ? (UNROLL / 2) : 1;
   const bool NOUNROLL2 = ((UNROLL / 2) == 0);
 
+  // 处理未对齐的前导部分
   int Npreamble = (N<alignof(PackType)) ? N : AlignUp(dest0, alignof(PackType)) - dest0;
 
   // stage 0: check if we'll be able to use the fast, 64-bit aligned path.
   // If not, we'll just use the slow preamble path for the whole operation
+  // 判断是否可以使用快速的64位对齐路径
   bool alignable = (((AlignUp(src0,  alignof(PackType)) == src0  + Npreamble)) &&
       (!HAS_DEST1 || (AlignUp(dest1, alignof(PackType)) == dest1 + Npreamble)) &&
       (!HAS_SRC1  || (AlignUp(src1,  alignof(PackType)) == src1  + Npreamble)));
@@ -299,6 +301,7 @@ __device__ inline void ReduceOrCopy(const int tid,
 
   // stage 1: preamble: handle any elements up to the point of everything coming
   // into alignment
+  // 处理前导部分
   for (int idx = tid; idx < Npreamble; idx += THREADS) {
     // ought to be no way this is ever more than one iteration, except when
     // alignable is false
@@ -314,11 +317,13 @@ __device__ inline void ReduceOrCopy(const int tid,
   }
 
   // reduce N by however many elements we've handled already
+  // 减少N的大小
   int Ndone = Npreamble;
   int Nrem = N - Ndone;
 
   // stage 2: fast path: use 64b loads/stores to do the bulk of the work,
   // assuming the pointers we have are all 64-bit alignable.
+  // 快速路径
   if (alignable) {
     if (Ndone > 0) {
       // align up pointers
@@ -327,24 +332,27 @@ __device__ inline void ReduceOrCopy(const int tid,
     }
 
     // stage 2a: main loop
+    // 主循环
     int Nalign = (Nrem / (sizeof(PackType) / sizeof(T)) / (UNROLL * THREADS))
         * (UNROLL * THREADS); // round down
 
-    #pragma unroll 1 // don't unroll this loop
+#pragma unroll 1  // don't unroll this loop // 不展开循环
     for (int idx = tid; idx < Nalign; idx += UNROLL * THREADS) {
       PackType t0[UNROLL2];
       PackType t1[UNROLL2];
       PackType t2[UNROLL2];
 
-      #pragma unroll
+#pragma unroll  // 读取数据
       for (int j = 0; j < UNROLL2; ++j)
         FetchOneOrTwo64b<T, HAS_SRC1>(t0[j], src0, t1[j], src1,
             idx + j * THREADS);
 
       #pragma unroll
+      // reudce操作
       for (int j = 0; j < UNROLL2; ++j)
         t2[j] = ReduceOrCopy64b<FUNC, T, HAS_SRC1>(t0[j], t1[j]);
 
+      // 写入数据
       if (!NOUNROLL2) {
         #pragma unroll
         for (int j = 0; j < UNROLL2; ++j)
@@ -370,6 +378,7 @@ __device__ inline void ReduceOrCopy(const int tid,
 
     // stage 2b: slightly less optimized for section when we don't have full
     // UNROLLs
+    // 不完全满足循环展开的情况
     int Ndone2a = Nalign * (sizeof(PackType)/sizeof(T));
     Ndone += Ndone2a;
     Nrem = N - Ndone;
@@ -402,6 +411,7 @@ __device__ inline void ReduceOrCopy(const int tid,
       src0  += Ndone2b; if (HAS_SRC1)  { src1  += Ndone2b; }
     }
 
+    // 处理剩余
     for (int idx = tid; idx < Nrem; idx += THREADS) {
       // never ought to make it more than one time through this loop.  only a
       // few threads should even participate
