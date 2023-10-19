@@ -141,9 +141,15 @@ pthread_mutex_t initLock = PTHREAD_MUTEX_INITIALIZER;
 static bool initialized = false;
 static size_t maxLocalSizeBytes = 0;
 static ncclResult_t ncclInit() {
-  if (initialized) return ncclSuccess;
+  // nccl初始化函数，
+  if (initialized)
+    return ncclSuccess; // 如果初始化过，则直接返回success，函数结束
   pthread_mutex_lock(&initLock);
-  if (!initialized) {
+  // 互斥锁，阻塞调用。如果这个锁此时正在被其它线程占用，
+  // 那么 pthread_mutex_lock()调用会进入到这个锁的排队队列中，
+  // 并会进入阻塞状态，直到拿到锁之后才会返回。
+  if (!initialized)
+  { // 如果未初始化，则继续执行
     initEnv();
     initGdrCopy();
     maxLocalSizeBytes = ncclKernMaxLocalSize();
@@ -164,7 +170,8 @@ ncclResult_t ncclGetVersion(int* version) {
 
 NCCL_API(ncclResult_t, ncclGetUniqueId, ncclUniqueId* out);
 ncclResult_t ncclGetUniqueId(ncclUniqueId* out) {
-  NCCLCHECK(ncclInit());
+  // 获取nccl中的UniqueId
+  NCCLCHECK(ncclInit()); // nccl初始化函数，
   NCCLCHECK(PtrCheck(out, "GetUniqueId", "out"));
   return bootstrapGetUniqueId(out);
 }
